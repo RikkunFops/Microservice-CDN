@@ -13,6 +13,15 @@ class GossipClient:
         self.MainNode_Address = ("100.79.33.125", 50000)
         self.MainNode_Socket.connect(self.MainNode_Address)
 
+        # Sub-node info
+        self.HasAuth = False
+        self.AuthNode_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.HasContent = False
+        self.ContNode_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # Program info
+        self.localdir = os.path.dirname(os.path.realpath(__file__))
+
         # Client info
         self.NodeType = "Client"
         self.addr, self.port = self.MainNode_Socket.getsockname()
@@ -20,7 +29,7 @@ class GossipClient:
         self.is_authed = False
         
 
-        
+    
 
 
     def start(self):
@@ -30,6 +39,8 @@ class GossipClient:
             if message.lower() == 'exit':
                 self.MainNode_Socket.send(message.encode('utf-8'))
                 self.MainNode_Socket.close()
+                self.AuthNode_Socket.close()
+                self.ContNode_Socket.close()
                 break
             
             if message.lower == "testload auth":
@@ -38,54 +49,70 @@ class GossipClient:
                 self.MainNode_Socket.sendall(message.encode("utf-8"))
 
 
-            elif message.lower() == 'auth':
-                self.create_socket("auth")
-                auth_ip, auth_port = self.get_AuthNode_Addr()
-                self.AuthNode_Socket.connect((auth_ip, auth_port))
-                while True:
+            elif message.lower() == 'login':
+                if not self.HasAuth:
+                    self.create_socket("auth")
+                    
+                # Take login details, send intent and then inform user of result.
 
-                    username = input("Type your username: (User)")
-                    password = input("Type your password: (Password)")
-                    self.AuthNode_Socket.sendall(f"{username}/{password}".encode("utf-8"))
-                    answer = self.AuthNode_Socket.recv(1024).decode("utf-8")
-                    if answer == "Failed":
+                username = input("Type your username: (User)")
+                password = input("Type your password: (Password)")
+                self.AuthNode_Socket.sendall("login".encode("utf-8"))
+                self.AuthNode_Socket.sendall(f"{username}/{password}".encode("utf-8"))
+                answer = self.AuthNode_Socket.recv(1024).decode("utf-8")
+                if answer == "Failed":
                         print("Failed to authenticate. Try again.")
 
-                    else:
-                        print(f"{answer} is your Auth token")
-                        self.auth_token = answer
-                        self.is_authed = True
-                        self.AuthNode_Socket.close()
-                        break
+                else:
+                    print(f"{answer} is your Auth token")
+                    self.auth_token = answer
+                    self.is_authed = True
+                    
+            
 
-            elif message.lower() == 'list' and self.is_authed:
+            elif message.lower() == 'signup':
+                if not self.HasAuth:
+                    self.create_socket("auth")
+                    
 
+                new_username = input("Type your selected username:")
+                new_password = input("Now type your password:")
+                # Tell node intent and then user details
+                self.AuthNode_Socket.sendall("signup".encode("utf-8"))
+                self.AuthNode_Socket.sendall(f"{new_username}/{new_password}".encode("utf-8"))
+                answer = self.AuthNode_Socket.recv(1024).decode("utf-8")
+                # Inform user of result
+                print(answer)
                 
-                print("Connecting to content node.")
-                self.create_socket("cont")
-                self.ContNode_Socket.sendall(self.auth_token.encode("utf-8"))
-                conf = self.ContNode_Socket.recv(1024).decode("utf-8")
-                print(conf)
-                self.hasContent = True
-                self.ContNode_Socket.sendall("list".encode("utf-8"))
-                startlist= self.ContNode_Socket.recv(1024).decode("utf-8")
-                print(startlist)
-                while True:
-                    contlist = self.ContNode_Socket.recv(1024).decode("utf-8")
 
-                    if "finished" in contlist.lower():
-                        print(contlist)
-                        break  
 
-                    else:
-                        print(contlist)
+            elif message.lower() == 'list':
+                if self.is_authed:
+                    if self.HasContent == False:
+                        self.create_socket("cont")
+                    
+                    
+                    self.ContNode_Socket.sendall("list".encode("utf-8"))
+                    startlist= self.ContNode_Socket.recv(1024).decode("utf-8")
+                    print(startlist)
+                    while True:
+                        contlist = self.ContNode_Socket.recv(1024).decode("utf-8")
+
+                        if "finished" in contlist.lower():
+                            print(contlist)
+                            break  
+
+                        else:
+                            print(contlist)
+                else:
+                    print("Please login first.")
+
+
 
             elif 'download' in message.lower():
-                
-                print("Connecting to content node.")
-                self.create_socket("cont")
-                self.ContNode_Socket.sendall(self.auth_token.encode("utf-8"))
-                conf = self.ContNode_Socket.recv(1024).decode("utf-8")
+                if self.is_authed:
+                    if self.HasContent == False:
+                        self.create_socket("cont")
                 
                 self.ContNode_Socket.sendall(message.encode("utf-8"))
                 command, content = message.split(maxsplit=1)
@@ -95,10 +122,11 @@ class GossipClient:
 
             elif (message.lower() == 'list' or message.lower() == 'download') and not self.is_authed:
                 print("You are not authenticated. Log in first.")
-            
+
+
             elif message.lower() == "authy":
                 self.MainNode_Socket.send(message.encode("utf-8"))
-            
+
             else:
                 self.MainNode_Socket.send(message.encode('utf-8'))
         
@@ -106,17 +134,20 @@ class GossipClient:
         filepath = filename
         if not filepath.endswith(".mp3"):
             filepath += ".mp3"
-        filepath = f"Client/{filename}"
+        filepath = f"{self.localdir}/{filename}"
 
         with open(filepath, 'wb') as file:
             while True:
                 data = connection.recv(1024)
-                if not data:
-                    break
+                try:
+                    if data.decode("utf-8") == "finished":
+                        break
+                except:
+                    pass
                 file.write(data)
 
         # Calculate MD5 checksum after the file has been received
-        checkhash = self.generate_md5(filename)
+        checkhash = self.generate_md5(filepath)
         print("Expected hash:", exphash)
         print("Calculated hash:", checkhash)
 
@@ -138,14 +169,23 @@ class GossipClient:
 
 
     def create_socket(self, node_type):
+        print(f"Trying to connect to {node_type}")
         if node_type == "auth":
-            self.AuthNode_Address = ("", 0)
-            self.AuthNode_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            AuthNode_Address = self.get_AuthNode_Addr()
+            self.AuthNode_Socket.connect(AuthNode_Address)
+            self.HasAuth = True
         elif node_type == "cont":
-            self.ContNode_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             addr = self.get_ContNode_Addr()
             self.ContNode_Address = addr
             self.ContNode_Socket.connect(self.ContNode_Address)
+            self.ContNode_Socket.sendall(self.auth_token.encode("utf-8"))
+            conf = self.ContNode_Socket.recv(1024).decode("utf-8")
+            
+            if conf == "Success":
+                print("Successful connection")
+                self.HasContent = True
+            else:
+                print(conf)
 
 
     def get_AuthNode_Addr(self):
@@ -163,11 +203,9 @@ class GossipClient:
     def get_ContNode_Addr(self):
         make_req = "cont_req"
         self.MainNode_Socket.send(make_req.encode("utf-8"))
-        
         answer = self.MainNode_Socket.recv(1024)
 
         answer = pickle.loads(answer)
-        
         host, port = answer.split(":")
         ip = socket.gethostbyname(host)
         port = int(port)  # Convert port to integer

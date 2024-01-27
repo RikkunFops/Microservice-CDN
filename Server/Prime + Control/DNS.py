@@ -81,7 +81,7 @@ class GossipServer:
                 if node.load <= load:
                     load = node.load
                     target = node.addr
-        print(target)    
+           
         return target
 
     def spawn_node(self, node_type):
@@ -175,42 +175,35 @@ class GossipServer:
 
     def handle_node(self, node_socket, node_type, addr):
         try:
+
+            if node_type == "Content":
+                self.checkloads("auth")
+                auth_addr = self.least_loaded("auth")
+                
+                packed_data = self.pickle(auth_addr)
+                        
+                node_socket.sendall(packed_data)
             while True:
-                # Send a request to the node to check its load
-                node_socket.sendall("checkload".encode("utf-8"))
-
-                # Receive the load information from the node
-                load_data = node_socket.recv(1024).decode("utf-8")
                     
-                if not load_data:
-                # If no data is received, break out of the loop
-                    break
-                    
-                    # Convert the received load information to an integer
-                load = int(load_data)
+                    request = node_socket.recv(1024).decode("utf-8")
+                    if not request:
+                        break
 
-                if node_type == "Auth" and not self.blockAuthUpdate:
-                    for nodes in self.Auth_Nodes:
-                        if nodes.addr == addr:
-                            nodes.load = load
-                            break
-                elif node_type == "Content" and not self.blockContUpdate:
-                    for nodes in self.Content_Nodes:
-                        if nodes.addr == addr:
-                            nodes.load = load
-                            break
+                    
+                        
+                
 
                 # Sleep for a while before checking the load again
-                sleep(5)
+                
         except ConnectionResetError:
             pass  # Connection was reset by the client
         finally:
             print(f"{node_type} node disconnected")
             if node_type == "Auth":
                 # Find the corresponding Auth node and remove it
-                auth_node = next((node for node in self.authNodes if node.addr == addr), None)
+                auth_node = next((node for node in self.Auth_Nodes if node.addr == addr), None)
                 if auth_node:
-                    self.authNodes.remove(auth_node)
+                    self.Auth_Nodes.remove(auth_node)
                     self.authChild -=1
             elif node_type == "Content":
                 # Find the corresponding Content node and remove it
@@ -230,6 +223,39 @@ class GossipServer:
             self.controlChild -=1
             print(f"Control node {name} disconnected")
 
+    def handle_load(self):
+        while True:
+            for n in self.Auth_Nodes:
+                # Send a request to the node to check its load
+                    n.socket.sendall("checkload".encode("utf-8"))
+
+                    # Receive the load information from the node
+                    load_data = n.socket.recv(1024).decode("utf-8")
+
+                    if not load_data:
+                    # If no data is received, break out of the loop
+                        break
+                        
+                        # Convert the received load information to an integer
+                    load = int(load_data)
+                    n.load = load 
+            for n in self.Content_Nodes:
+                # Send a request to the node to check its load
+                n.socket.sendall("checkload".encode("utf-8"))
+
+                # Receive the load information from the node
+                load_data = n.socket.recv(1024).decode("utf-8")
+
+                if not load_data:
+                    # If no data is received, break out of the loop
+                    break
+                # Convert the received load information to an integer
+                load = int(load_data)
+                n.load = load        
+            sleep(5)
+                
+                    
+
 
 
 
@@ -237,7 +263,8 @@ class GossipServer:
         
 
         print(f"Server listening on {self.host}:{self.port}")
-
+        load_handler = threading.Thread(target=self.handle_load)
+        load_handler.start()
 
         while True:
             client_socket, addr = self.server_socket.accept()
