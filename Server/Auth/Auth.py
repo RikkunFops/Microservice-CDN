@@ -39,12 +39,19 @@ class GossipAuth:
         MasterNode_Sock.connect(self.master)
         MasterNode_Sock.sendall((f"{self.node_type}/{self.host}:{self.port}").encode("utf-8"))
         while True:
-            data = MasterNode_Sock.recv(1024)
-            if not data:
-                break
-            message = data.decode("utf-8")
-            if message == "checkload":
-                MasterNode_Sock.sendall(str(self.load).encode("utf-8"))
+            try:
+                data = MasterNode_Sock.recv(1024)
+                
+                if not data:
+                    MasterNode_Sock.close() 
+                    print("Closing socket")
+                    break
+                message = data.decode("utf-8")
+                if message == "checkload":
+                    MasterNode_Sock.sendall(f"checkload/{str(self.load)}".encode("utf-8"))
+                    
+            except socket.error as e:
+                print(f"socket error: {e}")
             
 
             
@@ -57,6 +64,7 @@ class GossipAuth:
             print(f"Auth Node {self.host, self.port} has new client: {addr}")
             client_thread = threading.Thread(target=self.handle_client, args=(new_client,addr,))
             client_thread.start()
+            
 
     def handle_client(self, client_socket, addr):
         try:

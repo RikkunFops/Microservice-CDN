@@ -124,8 +124,21 @@ class GossipClient:
                 print("You are not authenticated. Log in first.")
 
 
-            elif message.lower() == "authy":
+            elif message.lower() == "load":
                 self.MainNode_Socket.send(message.encode("utf-8"))
+
+                startlist = self.MainNode_Socket.recv(1024).decode("utf-8")
+                print(startlist)
+                while True:
+                        nodelist = self.MainNode_Socket.recv(1024).decode("utf-8")
+
+                        if "finished" in nodelist.lower():
+                            print(nodelist)
+                            break  
+
+                        else:
+                            print(nodelist)
+                
 
             else:
                 self.MainNode_Socket.send(message.encode('utf-8'))
@@ -140,7 +153,9 @@ class GossipClient:
             while True:
                 data = connection.recv(1024)
                 try:
+                    
                     if data.decode("utf-8") == "finished":
+                        
                         break
                 except:
                     pass
@@ -206,11 +221,12 @@ class GossipClient:
         answer = self.MainNode_Socket.recv(1024)
 
         answer = pickle.loads(answer)
+        
         host, port = answer.split(":")
         ip = socket.gethostbyname(host)
         port = int(port)  # Convert port to integer
         
-        return ip, port
+        return (ip, port)
 
 
     def receive_broadcasts(self):

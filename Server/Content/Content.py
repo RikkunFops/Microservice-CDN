@@ -63,12 +63,19 @@ class GossipContent:
         
         
         while True:
-            data = self.MasterNode_Sock.recv(1024)
-            if not data:
-                break
-            message = data
-            if message == "checkload":
-                self.MasterNode_Sock.sendall(str(self.load).encode("utf-8"))
+            try:
+                data = self.MasterNode_Sock.recv(1024)
+                
+                if not data:
+                    self.MasterNode_Sock.close() 
+                    print("Closing socket")
+                    break
+                message = data.decode("utf-8")
+                if message == "checkload":
+                    self.MasterNode_Sock.sendall(f"checkload/{str(self.load)}".encode("utf-8"))
+                    
+            except socket.error as e:
+                print(f"socket error: {e}")
 
     def get_content(self):
         filelist = [f for f in os.listdir(self.localdir) if os.path.isfile(os.path.join(self.localdir, f))]
@@ -84,11 +91,11 @@ class GossipContent:
         while True:
             new_client, addr = self.ContentNode_Socket.accept()
             print(f"Content Node {self.host, self.port} has new client: {addr}")
-            client_thread = threading.Thread(target=self.handle_client, args=(new_client,))
+            client_thread = threading.Thread(target=self.handle_client, args=(new_client, addr,))
             client_thread.start()
 
     
-    def handle_client(self, client_socket):
+    def handle_client(self, client_socket, addr):
         is_verified = False
 
         try:
@@ -107,6 +114,7 @@ class GossipContent:
             result = self.AuthNode_sock.recv(1024).decode("utf-8")
             
             if result == "Success":
+                self.load+=1
                 is_verified = True
                 client_socket.sendall("Success".encode("utf-8"))
             else:
@@ -149,13 +157,16 @@ class GossipContent:
                                             counter+=1
                                             client_socket.sendall(data)
                                             data = file.read(1024)
+                                        
                                         client_socket.sendall("finished".encode("utf-8"))  
                                     except Exception as e:
                                         print(f"Error sending. {e}")
             except ConnectionResetError:
                     pass  # Connection was reset by the client
             finally:
+                    self.load-=1
                     client_socket.close()
+                    print(f"{addr} has disconnected")
 
         else:
             client_socket.sendall("You are not authenticated. Log in first.".encode("utf-8"))

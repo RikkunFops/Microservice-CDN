@@ -34,8 +34,7 @@ class GossipServer:
         self.contentChild = 0
         self.controlChild = 0
         self.clients = 0
-        self.blockAuthUpdate = False
-        self.blockContUpdate = False
+        self.lockload = False
 
 
     def checkloads(self, node_type):
@@ -138,26 +137,38 @@ class GossipServer:
                     client_socket.sendall(packed_data)
 
                 elif message.lower() == "testload auth":
-                    if self.blockAuthUpdate == False:
-                        self.blockAuthUpdate = True
-                        for node in self.authNodes:
+                    if self.lockload == False:
+                        self.lockload = True
+                        for node in self.Auth_Nodes:
                             node.load = 5
                         self.checkloads("auth")
                         print("All auth nodes have been loaded.")
                     else:
-                        self.blockAuthUpdate = False
+                        self.lockload = False
                         print("Unlocked Auth node updates")
 
                 elif message.lower() == "testload content":
-                    if self.blockContUpdate == False:
-                        self.blockContUpdate = True
+                    if self.lockload == False:
+                        self.lockload = True
                         for node in self.Content_Nodes:
                             node.load = 5
                         self.checkloads("cont")
                         print("All content nodes have been loaded.")
                     else:
-                        self.blockAuthUpdate = False
+                        self.lockload = False
                         print("Unlocked Auth node updates")
+
+                elif message.lower() == "load":
+                    nodelist = self.Control_Nodes+self.Content_Nodes+self.Auth_Nodes
+                    for nodes in nodelist:
+                        if nodes in self.Control_Nodes:
+                            message = f"\nNAME: {nodes.name} // TYPE: {nodes.type}"
+                        else:
+                            message = f"\nNAME: {nodes.name} // TYPE: {nodes.type} // LOAD: {nodes.load}"
+                        client_socket.sendall(message.encode("utf-8"))
+                    client_socket.sendall("\nFinished listing nodes.".encode("utf-8"))
+
+
 
                 elif message.lower() == "shutdown":
                     self.do_exit('')
@@ -188,7 +199,18 @@ class GossipServer:
                     request = node_socket.recv(1024).decode("utf-8")
                     if not request:
                         break
-
+                    
+                    if request.startswith("checkload") and not self.lockload:
+                        _, load = request.split("/")
+                        for n in self.nodelist:
+                            # Receive the load information from the node
+                            if n.socket == node_socket:
+                                 # Convert the received load information to an integer
+                                    load = int(load)
+                                    
+                                    n.load = load
+                            else:
+                                continue
                     
                         
                 
@@ -225,34 +247,20 @@ class GossipServer:
 
     def handle_load(self):
         while True:
-            for n in self.Auth_Nodes:
-                # Send a request to the node to check its load
+            
+            self.nodelist = self.Auth_Nodes+self.Content_Nodes
+            for n in self.nodelist:
+                n.socket.settimeout(10)
+                try:
+                    
+                    # Send a request to the node to check its load
                     n.socket.sendall("checkload".encode("utf-8"))
-
-                    # Receive the load information from the node
-                    load_data = n.socket.recv(1024).decode("utf-8")
-
-                    if not load_data:
-                    # If no data is received, break out of the loop
-                        break
-                        
-                        # Convert the received load information to an integer
-                    load = int(load_data)
-                    n.load = load 
-            for n in self.Content_Nodes:
-                # Send a request to the node to check its load
-                n.socket.sendall("checkload".encode("utf-8"))
-
-                # Receive the load information from the node
-                load_data = n.socket.recv(1024).decode("utf-8")
-
-                if not load_data:
-                    # If no data is received, break out of the loop
-                    break
-                # Convert the received load information to an integer
-                load = int(load_data)
-                n.load = load        
-            sleep(5)
+           
+                except socket.timeout:
+                    print(f"{n.name} timed out")
+                finally:
+                    n.socket.settimeout(None)
+            sleep(4)
                 
                     
 

@@ -15,8 +15,8 @@ class GossipControl:
         self.node_type = "CONTROL_NODE"
         self.prime = ("100.79.33.125", 50000)
         self.localdir = os.path.dirname(os.path.realpath(__file__))
-        self.contdir = f"{self.localdir}/Content.py"
-        self.authdir = f"{self.localdir}/Auth.py"
+        self.contdir = f"{self.localdir}/Content/Content.py"
+        self.authdir = f"{self.localdir}/Auth/Auth.py"
         self.load = 0
 
     def connect_to_master(self):
@@ -30,11 +30,11 @@ class GossipControl:
             message = data.decode("utf-8")
             if message == "SPAWN_CONT":
                 print("Spawning Content Node.")
-                subprocess.Popen(['python', self.contdir], shell=True)
+                subprocess.Popen(['py', self.contdir], shell=True)
                 pass
             if message == "SPAWN_AUTH":
                 print("Spawning Auth Node")
-                subprocess.Popen(['python', 'Server/Auth.py'], shell=True )
+                subprocess.Popen(['py', self.authdir], shell=True )
                 pass
 
     def get_prime_addr(self):
